@@ -1,0 +1,236 @@
+---
+title: "ggplot2 presentation"
+author: "Yuan Li"
+date: '2023-10-09'
+output: 
+  html_document: 
+    toc: yes
+---
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "C:/Users/YUAN LI/Desktop/ggplot2_example_data/")
+getwd()
+```
+
+```{r packages, warning=FALSE, message=FALSE}
+library(readxl)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+# ggplot2
+
+**Data**
+
+```{r data1}
+annual_counts <- read_csv("Lymes.csv",
+                          col_type=cols(PartOfCumulativeCountSeries = col_logical())) %>%
+  filter(PartOfCumulativeCountSeries) %>%
+  mutate(year = year(PeriodStartDate+7)) %>%
+  group_by(year) %>%
+  summarize(count = max(CountValue))
+```
+
+```{r data2, message=FALSE}
+pcoa <- read_tsv(file="baxter.braycurtis.pcoa.axes")
+metadata <- read_excel(path="baxter.metadata.xlsx")
+metadata_pcoa <- inner_join(metadata, pcoa, by=c('sample'='group'))
+```
+
+```{r data3, message=FALSE}
+meta_alpha <- read_csv("meta.alpha.csv")
+```
+
+</br>
+
+## Layers
+
+ggplot2 uses the idea of "layers" and the operator $+$ to add layers:
+
+**Coordinates and variables**
+```{r ggplot2-layer-1}
+ggplot(annual_counts, aes(x=year, y=count))
+```
+
+**Plotting type**
+```{r ggplot2-layer-2}
+ggplot(annual_counts, aes(x=year, y=count)) +
+  geom_line()
+```
+
+**Each type of plotting is a new layer:**
+
+```{r ggplot2-layer-3}
+ggplot(annual_counts, aes(x=year, y=count)) +
+	geom_line() +
+	geom_point() 
+```
+
+</br>
+
+## Aesthetics
+
+From my experience, the most frequently used and helpful arguments for adjusting the labels and axes are:
+
+- **scale_x_continuous()**: can specify range and break
+-	**scale_y_continuous()**
+- **labs()**: easiest way to set x, y, and main titles
+- **scale_color_manual()**: can specify colors and how legend is shown with great freedom
+
+```{r aesthetics1}
+ggplot(annual_counts, aes(x=year, y=count)) +
+	geom_point() +
+	scale_y_continuous(limits=c(0,NA)) +
+	scale_x_continuous(breaks=c(1990, 1995, 2000, 2005, 2010, 2015)) +
+	labs(x="Year",
+	     y="Number of cases",
+	     title="The number of Lyme disease cases has been rising since 1990") +
+	theme_classic()
+```
+
+```{r aesthetics2}
+ggplot(metadata_pcoa, aes(x=axis1, y=axis2, color=dx)) +
+	geom_point(shape=19, size=2) +
+	scale_color_manual(name=NULL,
+		values=c("#00AFBB", "#E7B800", "#FC4E07"),
+		breaks=c("normal", "adenoma", "cancer"),
+		labels=c("Normal", "Adenoma", "Cancer")) +
+	coord_fixed() +
+	labs(title="PCoA of Bray-Curtis Distances Between Stool Samples",
+		x="PCo Axis 1",
+		y="PCo Axis 2") +
+	theme_classic()
+```
+
+</br>
+
+## Significance
+
+One thing I don't like about ggplot2 is that the significance needs to be calculated beforehand and added as a drawing when the statistics is slightly complicated:
+
+```{r significance1}
+meta_alpha_box <- 
+  ggplot(meta_alpha, aes(x=diagnosis, y=fit_result, color=diagnosis)) +
+	geom_boxplot() +
+	scale_color_manual(name=NULL,
+		values=c("#00AFBB", "#E7B800", "#FC4E07"),
+		breaks=c("normal", "adenoma", "cancer"),
+		labels=c("Normal", "Adenoma", "Cancer")) +
+	scale_x_discrete(limits=c("normal", "adenoma", "cancer"),
+		labels=c("Normal", "Adenoma", "Cancer")) +
+	labs(title="Relationship between FIT result and subject's diagnosis",
+		x=NULL,
+		y="FIT Result") +
+	theme_classic()
+
+meta_alpha_box
+
+meta_alpha_jitter <-
+  ggplot(meta_alpha, aes(x=sex, y=fit_result, color=diagnosis)) +
+	geom_jitter(shape=19, size=2, position=position_jitterdodge(dodge.width=0.7, jitter.width=0.1)) +
+	scale_color_manual(name=NULL,
+		values=c("#00AFBB", "#E7B800", "#FC4E07"),
+		breaks=c("normal", "adenoma", "cancer"),
+		labels=c("Normal", "Adenoma", "Cancer")) +
+	scale_x_discrete(limits=c("female", "male"),
+		labels=c("Female", "Male")) +
+	labs(title="Relationship between FIT result and subject's diagnosis",
+		x=NULL,
+		y="FIT Result") +
+	theme_classic()
+
+meta_alpha_jitter
+```
+
+Package [ggpubr](https://rpkgs.datanovia.com/ggpubr/) can help:
+
+- **compare_means()**: to performs one and multiple mean comparisons.
+- **stat_compare_means()**: to automatically add p-values and significance levels to a ggplot.
+
+To add p-values between groups, you need to specify the comparisons you want:
+
+```{r significance2, warning=FALSE, message=FALSE}
+library(ggpubr)
+
+compare_means(fit_result~diagnosis, data=meta_alpha, method = "t.test", paired = FALSE)
+```
+
+```{r significance3}
+comparisons <- list( c("normal", "adenoma"), 
+                        c("adenoma", "cancer"), 
+                        c("normal", "cancer") )
+
+meta_alpha_box + 
+  stat_compare_means(comparisons = comparisons, method = "t.test")
+
+# meta_alpha_jitter +
+#   stat_compare_means(comparisons = comparisons, method = "t.test", aes(group = sex))
+```
+
+
+</br>
+
+## Ordering
+
+Package [forcats](https://forcats.tidyverse.org/) is very helpful when you want to put categorical variables in a specific order:
+
+- **fct_reorder()**: reordering a factor by another variable.
+- **fct_infreq()**: reordering a factor by the frequency of values.
+- **fct_relevel()**: changing the order of a factor by hand.
+
+```{r ordering}
+library(forcats)
+
+ggplot(starwars, aes(x = eye_color)) + 
+  geom_bar() + 
+  coord_flip()
+
+starwars %>%
+  mutate(eye_color = fct_infreq(eye_color)) %>%
+  ggplot(aes(x = eye_color)) + 
+  geom_bar() + 
+  coord_flip()
+```
+
+</br>
+
+## Arrangement
+
+Sometimes you would want to arrange multiple plots in one figure, and the plots don't always fit into a grid. I found packages [patchwork](https://patchwork.data-imaginist.com/) and [ggarrange](https://rpkgs.datanovia.com/ggpubr/reference/ggarrange.html) useful. I would try *patchwork* first, as it is better maintained, and use *ggarrange* if *patchwork* doesn't work.
+
+You can freely [define the layout](https://patchwork.data-imaginist.com/articles/guides/layout.html), including blank spaces.
+
+```{r arrangement, message=FALSE}
+library(patchwork)
+
+p1 <- ggplot(mtcars) + geom_point(aes(mpg, disp))
+p2 <- ggplot(mtcars) + geom_boxplot(aes(gear, disp, group = gear))
+p3 <- ggplot(mtcars) + geom_smooth(aes(disp, qsec))
+p4 <- ggplot(mtcars) + geom_bar(aes(carb))
+
+layout <- '
+A#B
+#C#
+D#E
+'
+wrap_plots(A = p1, B = p2, C = p3, D = p4, design = layout)
+```
+
+## Exporting figures
+
+Journals have specific requirements on figures, including fonts, font size, theme styles, colors, etc. It would be easier to have a global setting before exporting figures for publications.
+
+```{r export}
+# pdf("Fig.2b.diversity.decrease.pdf", onefile = TRUE, bg = "white", 
+#     family = font, width = fig_wid_half, height = 5) # device pdf uses ArialMT for Arial
+# 
+# theme_set(theme_bw(base_size = fz_general))
+# theme_update(axis.text = element_text(size = fz_axis_tick),
+#              axis.title = element_text(size = fz_axis_title),
+#              strip.text = element_text(size = fz_panel_title, face = "bold"))
+# 
+# print(codon_decrease / aa_decrease)
+# 
+# invisible(dev.off())
+```
