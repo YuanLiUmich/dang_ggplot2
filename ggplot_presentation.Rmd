@@ -23,6 +23,8 @@ library(ggplot2)
 
 **Data**
 
+This is a dataset on Lyme disease from [Project Tycho](https://www.tycho.pitt.edu/), a website that aggregates disease data over time and geography. This dataset collects the occurrence of Lyme disease from 1990 to 2016 across the United States.
+
 ```{r data1}
 annual_counts <- read_csv("Lymes.csv",
                           col_type=cols(PartOfCumulativeCountSeries = col_logical())) %>%
@@ -31,6 +33,9 @@ annual_counts <- read_csv("Lymes.csv",
   group_by(year) %>%
   summarize(count = max(CountValue))
 ```
+
+
+This is a PCoA analysis data the Bray-Curtis distances of the microbiome between stool samples collected from patients with different diagnosis.
 
 ```{r data2, message=FALSE}
 pcoa <- read_tsv(file="baxter.braycurtis.pcoa.axes")
@@ -73,7 +78,7 @@ ggplot(annual_counts, aes(x=year, y=count)) +
 
 From my experience, the most frequently used and helpful arguments for adjusting the labels and axes are:
 
-- **scale_x_continuous()**: can specify range and break
+- **scale_x_continuous()**: can specify range, break, and how tick labels are shown
 -	**scale_y_continuous()**
 - **labs()**: easiest way to set x, y, and main titles
 - **scale_color_manual()**: can specify colors and how legend is shown with great freedom
@@ -81,7 +86,36 @@ From my experience, the most frequently used and helpful arguments for adjusting
 ```{r aesthetics1}
 ggplot(annual_counts, aes(x=year, y=count)) +
 	geom_point() +
-	scale_y_continuous(limits=c(0,NA)) +
+	scale_y_continuous(limits=c(0,25000)) +
+	scale_x_continuous(breaks=c(1990, 1995, 2000, 2005, 2010, 2015)) +
+	labs(x="Year",
+	     y="Number of cases",
+	     title="The number of Lyme disease cases has been rising since 1990") +
+	theme_classic()
+```
+
+You can show tick labels differently than the actual data:
+
+```{r}
+ggplot(annual_counts, aes(x=year, y=count)) +
+	geom_point() +
+	scale_y_continuous(limits=c(0,25000)) +
+	scale_x_continuous(breaks=c(1990, 1995, 2000, 2005, 2010, 2015),
+	                   label = c("Year 0", "Year 5", "Year 10",
+	                             "Year 15", "Year 20", "Year 25")) +
+	labs(x="Year",
+	     y="Number of cases",
+	     title="The number of Lyme disease cases has been rising since 1990") +
+	theme_classic()
+```
+
+You can use scientific notation:
+
+```{r}
+ggplot(annual_counts, aes(x=year, y=count)) +
+	geom_point() +
+	scale_y_continuous(limits=c(0,25000),
+	                   labels = scales::scientific) +
 	scale_x_continuous(breaks=c(1990, 1995, 2000, 2005, 2010, 2015)) +
 	labs(x="Year",
 	     y="Number of cases",
@@ -108,6 +142,8 @@ ggplot(metadata_pcoa, aes(x=axis1, y=axis2, color=dx)) +
 ## Significance
 
 One thing I don't like about ggplot2 is that the significance needs to be calculated beforehand and added as a drawing when the statistics is slightly complicated:
+
+The csv 'meta_alpha' is a simpified metadata file from 'metadata'. The plots below show the relationship between colorectal cancer screening diagnosis and the faecal immunochemical testing (FIT) result:
 
 ```{r significance1}
 meta_alpha_box <- 
@@ -163,11 +199,31 @@ comparisons <- list( c("normal", "adenoma"),
 
 meta_alpha_box + 
   stat_compare_means(comparisons = comparisons, method = "t.test")
-
-# meta_alpha_jitter +
-#   stat_compare_means(comparisons = comparisons, method = "t.test", aes(group = sex))
 ```
 
+Adding significance values is still easy when you use facet:
+
+```{r}
+meta_alpha_boxplot_facet <-
+  ggplot(meta_alpha, aes(x=diagnosis, y=fit_result, color=diagnosis)) +
+	geom_boxplot() +
+  facet_wrap(~sex) +
+	scale_color_manual(name=NULL,
+		values=c("#00AFBB", "#E7B800", "#FC4E07"),
+		breaks=c("normal", "adenoma", "cancer"),
+		labels=c("Normal", "Adenoma", "Cancer")) +
+	scale_x_discrete(limits=c("normal", "adenoma", "cancer"),
+		labels=c("Normal", "Adenoma", "Cancer")) +
+	labs(title="Relationship between FIT result and subject's diagnosis",
+		x=NULL,
+		y="FIT Result") +
+	theme_classic()
+
+meta_alpha_boxplot_facet +
+  stat_compare_means(comparisons = comparisons, method = "t.test", aes(group = sex))
+```
+
+But it you want to compare while having groups, and at the same time don't want to use `facet_wrap()`, you need to create another variable in the dataset and make new comparisons.
 
 </br>
 
